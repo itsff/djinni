@@ -139,8 +139,15 @@ class JavaGenerator(spec: Spec) extends Generator(spec) {
       val typeParamList = javaTypeParams(typeParams)
       writeDoc(w, doc)
 
+      
+
       javaAnnotationHeader.foreach(w.wl)
-      w.w(s"${javaClassAccessModifierString}abstract class $javaClass$typeParamList").braced {
+      val isAbstractClass = i.methods.exists(_.static) /*|| i.consts.nonEmpty || i.ext.cpp ||*/
+      val classPrefix = if (isAbstractClass) "abstract class" else "interface"
+      val methodPrefix = if (isAbstractClass) "abstract " else ""
+      val inheritanceKeyword = if (isAbstractClass) "extends" else "implements"
+      w.w(s"${javaClassAccessModifierString} ${classPrefix} $javaClass$typeParamList").braced {
+      //w.w(s"${javaClassAccessModifierString}abstract class $javaClass$typeParamList").braced {
         val skipFirst = SkipFirst()
         generateJavaConstants(w, i.consts)
 
@@ -154,7 +161,7 @@ class JavaGenerator(spec: Spec) extends Generator(spec) {
             nullityAnnotation + marshal.paramType(p.ty) + " " + idJava.local(p.ident)
           })
           marshal.nullityAnnotation(m.ret).foreach(w.wl)
-          w.wl("public abstract " + ret + " " + idJava.method(m.ident) + params.mkString("(", ", ", ")") + throwException + ";")
+          w.wl(s"public ${methodPrefix} " + ret + " " + idJava.method(m.ident) + params.mkString("(", ", ", ")") + throwException + ";")
         }
         for (m <- i.methods if m.static) {
           skipFirst { w.wl }
@@ -167,41 +174,45 @@ class JavaGenerator(spec: Spec) extends Generator(spec) {
           marshal.nullityAnnotation(m.ret).foreach(w.wl)
           w.wl("public static native "+ ret + " " + idJava.method(m.ident) + params.mkString("(", ", ", ")") + ";")
         }
-        if (i.ext.cpp) {
+
+      }
+
+      if (i.ext.cpp) {
+        w.wl
+        javaAnnotationHeader.foreach(w.wl)
+        w.wl(s"final class ${javaClass}__CppProxy$typeParamList $inheritanceKeyword $javaClass$typeParamList").braced {
+          w.wl("private final long nativeRef;")
+          w.wl("private final AtomicBoolean destroyed = new AtomicBoolean(false);")
           w.wl
-          javaAnnotationHeader.foreach(w.wl)
-          w.wl(s"private static final class CppProxy$typeParamList extends $javaClass$typeParamList").braced {
-            w.wl("private final long nativeRef;")
-            w.wl("private final AtomicBoolean destroyed = new AtomicBoolean(false);")
+          w.wl(s"private ${javaClass}__CppProxy(long nativeRef)").braced {
+            w.wl("if (nativeRef == 0) throw new RuntimeException(\"nativeRef is zero\");")
+            w.wl(s"this.nativeRef = nativeRef;")
+          }
+          w.wl
+          w.wl("private native void nativeDestroy(long nativeRef);")
+          w.wl("public void destroy()").braced {
+            w.wl("boolean destroyed = this.destroyed.getAndSet(true);")
+            w.wl("if (!destroyed) nativeDestroy(this.nativeRef);")
+          }
+          w.wl("protected void finalize() throws java.lang.Throwable").braced {
+            w.wl("destroy();")
+            w.wl("super.finalize();")
+          }
+
+          val throwException = spec.javaCppException.fold("")(" throws " + _)
+          for (m <- i.methods if !m.static) { // Static methods not in CppProxy
+          val ret = marshal.returnType(m.ret)
+            val returnStmt = m.ret.fold("")(_ => "return ")
+            val params = m.params.map(p => marshal.paramType(p.ty) + " " + idJava.local(p.ident)).mkString(", ")
+            val args = m.params.map(p => idJava.local(p.ident)).mkString(", ")
+            val meth = idJava.method(m.ident)
             w.wl
-            w.wl(s"private CppProxy(long nativeRef)").braced {
-              w.wl("if (nativeRef == 0) throw new RuntimeException(\"nativeRef is zero\");")
-              w.wl(s"this.nativeRef = nativeRef;")
+            w.wl(s"@Override")
+            w.wl(s"public $ret $meth($params)$throwException").braced {
+              w.wl("assert !this.destroyed.get() : \"trying to use a destroyed object\";")
+              w.wl(s"${returnStmt}native_$meth(this.nativeRef${preComma(args)});")
             }
-            w.wl
-            w.wl("private native void nativeDestroy(long nativeRef);")
-            w.wl("public void destroy()").braced {
-              w.wl("boolean destroyed = this.destroyed.getAndSet(true);")
-              w.wl("if (!destroyed) nativeDestroy(this.nativeRef);")
-            }
-            w.wl("protected void finalize() throws java.lang.Throwable").braced {
-              w.wl("destroy();")
-              w.wl("super.finalize();")
-            }
-            for (m <- i.methods if !m.static) { // Static methods not in CppProxy
-              val ret = marshal.returnType(m.ret)
-              val returnStmt = m.ret.fold("")(_ => "return ")
-              val params = m.params.map(p => marshal.paramType(p.ty) + " " + idJava.local(p.ident)).mkString(", ")
-              val args = m.params.map(p => idJava.local(p.ident)).mkString(", ")
-              val meth = idJava.method(m.ident)
-              w.wl
-              w.wl(s"@Override")
-              w.wl(s"public $ret $meth($params)$throwException").braced {
-                w.wl("assert !this.destroyed.get() : \"trying to use a destroyed object\";")
-                w.wl(s"${returnStmt}native_$meth(this.nativeRef${preComma(args)});")
-              }
-              w.wl(s"private native $ret native_$meth(long _nativeRef${preComma(params)});")
-            }
+            w.wl(s"private native $ret native_$meth(long _nativeRef${preComma(params)});")
           }
         }
       }

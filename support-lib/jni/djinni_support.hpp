@@ -340,7 +340,8 @@ template <class T>
 static const std::shared_ptr<T> & objectFromHandleAddress(jlong handle) {
     assert(handle);
     assert(handle > 4096);
-    const auto & ret = reinterpret_cast<const CppProxyHandle<T> *>(handle)->get();
+    const CppProxyHandle<T> * h = reinterpret_cast<const CppProxyHandle<T> *>(handle);
+    const auto & ret = h->get();
     assert(ret);
     return ret;
 }

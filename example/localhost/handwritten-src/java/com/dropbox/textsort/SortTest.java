@@ -25,15 +25,17 @@ public class SortTest {
         // Create some random strings to sort below
         ArrayList<String> strs = new ArrayList<String>();
         for (int i = 0; i < 5; ++i) {
-            strs.add(randomString());
+            String s = randomString();
+            strs.add(s);
+            log.log(Level.INFO, "input string: " + s);
         }
-        log.log(Level.INFO, "Input strings:\n" + String.join("\n", strs));
-
+        
         // Sort them!
         ItemList sorted = SortItems.runSort(new ItemList(strs));
-        log.log(
-            Level.INFO,
-            "Output strings:\n" + String.join("\n", sorted.getItems()));
+        for (String s: sorted.getItems())
+            {
+                log.log(Level.INFO, "sorted: " + s);
+            }
     }
 
 }

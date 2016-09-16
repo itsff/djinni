@@ -254,7 +254,12 @@ class JNIGenerator(spec: Spec) extends Generator(spec) {
 
     def writeJniBody(w: IndentWriter) {
       // Defining ctor/dtor in the cpp file reduces build times
-      val baseClassParam = if (i.ext.cpp) q(classLookup+"$CppProxy") else ""
+
+      val isAbstractClass = i.methods.exists(_.static) /*|| i.consts.nonEmpty || i.ext.cpp ||*/
+
+      val proxyClassName = /*if (isAbstractClass)  q(classLookup+"$CppProxy") else */q(classLookup+"__CppProxy")
+
+      val baseClassParam = if (i.ext.cpp) proxyClassName else ""
       val jniSelfWithParams = jniSelf + typeParamsSignature(typeParams)
       writeJniTypeParams(w, typeParams)
       w.wl(s"$jniSelfWithParams::$jniSelf() : $baseType($baseClassParam) {}")
@@ -331,6 +336,7 @@ class JNIGenerator(spec: Spec) extends Generator(spec) {
             }
           }
           else {
+            // TODO: This may need CppProxy fixing
             w.wl(s"CJNIEXPORT $jniRetType JNICALL ${prefix}_00024CppProxy_$methodNameMunged(JNIEnv* jniEnv, jobject /*this*/, jlong nativeRef${preComma(paramList)})").braced {
               w.w("try").bracedEnd(s" JNI_TRANSLATE_EXCEPTIONS_RETURN(jniEnv, $zero)") {
                 w.wl(s"DJINNI_FUNCTION_PROLOGUE1(jniEnv, nativeRef);")
